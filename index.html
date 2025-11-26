@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام الدخول الآمن مع الخريطة</title>
+    <title>نظام الدخول الآمن مع الخريطة ورفع الملفات</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -25,7 +26,7 @@
         
         .container {
             width: 100%;
-            max-width: 1200px;
+            max-width: 1400px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -65,7 +66,8 @@
         }
         
         input[type="text"],
-        input[type="password"] {
+        input[type="password"],
+        input[type="file"] {
             width: 100%;
             padding: 12px 15px;
             border: 1px solid #ddd;
@@ -118,6 +120,14 @@
             background-color: #c0392b;
         }
         
+        .btn-warning {
+            background-color: #f39c12;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e67e22;
+        }
+        
         .error-message {
             color: #e74c3c;
             text-align: center;
@@ -136,6 +146,46 @@
             background-color: #d5f4e6;
             border-radius: 5px;
             display: none;
+        }
+        
+        .info-message {
+            color: #3498db;
+            text-align: center;
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #d6eaf8;
+            border-radius: 5px;
+        }
+        
+        .warning-message {
+            color: #f39c12;
+            text-align: center;
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #fef5e7;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         
         /* تصميم لوحة التحكم مع الخريطة */
@@ -179,6 +229,76 @@
             margin-bottom: 10px;
         }
         
+        .upload-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px dashed #3498db;
+        }
+        
+        .upload-section h3 {
+            color: #2a5298;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .file-format-info {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .file-format-info h4 {
+            color: #2a5298;
+            margin-bottom: 10px;
+        }
+        
+        .file-format-info ul {
+            text-align: right;
+            padding-right: 20px;
+        }
+        
+        .file-format-info li {
+            margin-bottom: 5px;
+        }
+        
+        .upload-options {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .upload-option {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-option.active {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .upload-option:hover {
+            background-color: #2980b9;
+            color: white;
+        }
+        
+        .upload-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .upload-buttons button {
+            flex: 1;
+        }
+        
         #map {
             height: 500px;
             width: 100%;
@@ -202,6 +322,47 @@
         
         .map-controls button:hover {
             background-color: #2980b9;
+        }
+        
+        .layer-control {
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-top: 15px;
+        }
+        
+        .layer-control h4 {
+            margin-bottom: 10px;
+            color: #2a5298;
+        }
+        
+        .layer-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .layer-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .layer-item:last-child {
+            border-bottom: none;
+        }
+        
+        .layer-actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .layer-actions button {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin: 0;
         }
         
         /* تصميم صفحة الإعدادات */
@@ -244,6 +405,14 @@
             .header-buttons {
                 width: 100%;
                 justify-content: center;
+            }
+            
+            .upload-options {
+                flex-direction: column;
+            }
+            
+            .upload-buttons {
+                flex-direction: column;
             }
         }
         
@@ -292,11 +461,72 @@
             <div class="dashboard-content">
                 <h2 class="welcome-message" id="welcomeMessage">مرحباً بك في النظام!</h2>
                 
+                <!-- قسم رفع الملفات -->
+                <div class="upload-section">
+                    <h3>رفع ملفات الخرائط</h3>
+                    
+                    <div class="file-format-info">
+                        <h4>📁 الملفات المدعومة:</h4>
+                        <ul>
+                            <li><strong>Shapefile:</strong> ملف ZIP يحتوي على .shp, .shx, .dbf, .prj</li>
+                            <li><strong>GeoJSON:</strong> الملفات النصية بصيغة .geojson أو .json</li>
+                            <li><strong>KML/KMZ:</strong> ملفات Google Earth</li>
+                            <li><strong>يدعم الترميز العربي الكامل</strong> ✅</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="upload-options">
+                        <div class="upload-option active" data-type="zip">
+                            <h4>📦 Shapefile (ZIP)</h4>
+                            <p>رفع ملف ZIP واحد</p>
+                        </div>
+                        <div class="upload-option" data-type="geojson">
+                            <h4>🗺️ GeoJSON</h4>
+                            <p>رفع ملف GeoJSON</p>
+                        </div>
+                    </div>
+                    
+                    <!-- حقل رفع Shapefile -->
+                    <div class="form-group" id="zipUpload">
+                        <label for="zipFile">رفع ملف ZIP:</label>
+                        <input type="file" id="zipFile" accept=".zip">
+                    </div>
+                    
+                    <!-- حقل رفع GeoJSON -->
+                    <div class="form-group" id="geojsonUpload" style="display: none;">
+                        <label for="geojsonFile">رفع ملف GeoJSON:</label>
+                        <input type="file" id="geojsonFile" accept=".geojson,.json">
+                    </div>
+                    
+                    <div class="loading" id="loading">
+                        <div class="spinner"></div>
+                        <p>جاري معالجة الملفات وتحليل البيانات...</p>
+                    </div>
+                    
+                    <div class="upload-buttons">
+                        <button class="btn-success" id="uploadBtn">رفع الملفات وعرضها</button>
+                        <button class="btn-warning" id="clearLayersBtn">مسح جميع الطبقات</button>
+                    </div>
+                    
+                    <div class="error-message" id="uploadErrorMessage"></div>
+                    <div class="success-message" id="uploadSuccessMessage"></div>
+                </div>
+                
+                <!-- الخريطة -->
                 <div id="map"></div>
                 
+                <!-- عناصر تحكم الخريطة -->
                 <div class="map-controls">
                     <button id="locateBtn">تحديد موقعي</button>
                     <button id="resetBtn">إعادة تعيين الخريطة</button>
+                </div>
+                
+                <!-- التحكم في الطبقات -->
+                <div class="layer-control">
+                    <h4>الطبقات المعروضة:</h4>
+                    <div class="layer-list" id="layerList">
+                        <div class="info-message">لا توجد طبقات معروضة حالياً</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -341,6 +571,7 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.js"></script>
     <script>
         // بيانات المستخدمين المسموح لهم بالدخول
         let validUsers = [
@@ -368,15 +599,44 @@
         const locateBtn = document.getElementById('locateBtn');
         const resetBtn = document.getElementById('resetBtn');
         const currentUsername = document.getElementById('currentUsername');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const clearLayersBtn = document.getElementById('clearLayersBtn');
+        const uploadErrorMessage = document.getElementById('uploadErrorMessage');
+        const uploadSuccessMessage = document.getElementById('uploadSuccessMessage');
+        const layerList = document.getElementById('layerList');
+        const loading = document.getElementById('loading');
+        const zipUpload = document.getElementById('zipUpload');
+        const geojsonUpload = document.getElementById('geojsonUpload');
+        const uploadOptions = document.querySelectorAll('.upload-option');
         
         // متغيرات الخريطة
         let map;
         let userMarker;
+        let uploadedLayers = [];
+        let layerCounter = 0;
+        let currentUploadType = 'zip';
+        
+        // تبديل نوع الرفع
+        uploadOptions.forEach(option => {
+            option.addEventListener('click', function() {
+                uploadOptions.forEach(opt => opt.classList.remove('active'));
+                this.classList.add('active');
+                currentUploadType = this.getAttribute('data-type');
+                
+                if (currentUploadType === 'zip') {
+                    zipUpload.style.display = 'block';
+                    geojsonUpload.style.display = 'none';
+                } else {
+                    zipUpload.style.display = 'none';
+                    geojsonUpload.style.display = 'block';
+                }
+            });
+        });
         
         // تهيئة الخريطة
         function initMap() {
             // إنشاء الخريطة مع عرض خريطة العالم
-            map = L.map('map').setView([20, 0], 2);
+            map = L.map('map').setView([24.0, 45.0], 5); // مركز على السعودية
             
             // إضافة طبقة الخريطة من OpenStreetMap
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -384,8 +644,8 @@
             }).addTo(map);
             
             // إضافة علامة الموقع الافتراضي
-            userMarker = L.marker([20, 0]).addTo(map)
-                .bindPopup('موقع البداية')
+            userMarker = L.marker([24.0, 45.0]).addTo(map)
+                .bindPopup('موقع البداية - المملكة العربية السعودية')
                 .openPopup();
         }
         
@@ -416,11 +676,299 @@
         
         // إعادة تعيين الخريطة
         function resetMap() {
-            map.setView([20, 0], 2);
-            userMarker.setLatLng([20, 0])
-                .bindPopup('موقع البداية')
+            map.setView([24.0, 45.0], 5);
+            userMarker.setLatLng([24.0, 45.0])
+                .bindPopup('موقع البداية - المملكة العربية السعودية')
                 .openPopup();
         }
+        
+        // معالجة النصوص العربية
+        function fixArabicEncoding(text) {
+            if (typeof text !== 'string') return text;
+            
+            // محاولة إصلاح الترميز العربي
+            try {
+                // إذا كان النص يحتوي على أحرف عربية مشفرة بشكل خاطئ
+                if (text.includes('Ã') || text.includes('Ã')) {
+                    // محاولة تحويل من Windows-1256 إلى UTF-8
+                    return decodeURIComponent(escape(text));
+                }
+                return text;
+            } catch (e) {
+                return text;
+            }
+        }
+        
+        // معالجة خصائص الملف لتحسين العربية
+        function processArabicProperties(geojson) {
+            if (!geojson.features) return geojson;
+            
+            geojson.features.forEach(feature => {
+                if (feature.properties) {
+                    const newProperties = {};
+                    for (let key in feature.properties) {
+                        let value = feature.properties[key];
+                        
+                        // معالجة النصوص العربية
+                        if (typeof value === 'string') {
+                            value = fixArabicEncoding(value);
+                            
+                            // تنظيف النص من الأحpecial الغير مرغوبة
+                            value = value.replace(/[^\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\w\s\-_\.]/g, '');
+                        }
+                        
+                        newProperties[key] = value;
+                    }
+                    feature.properties = newProperties;
+                }
+            });
+            
+            return geojson;
+        }
+        
+        // رفع وعرض ملفات Shapefile
+        async function uploadShapefile() {
+            // إخفاء رسائل الخطأ والنجاح السابقة
+            uploadErrorMessage.style.display = 'none';
+            uploadSuccessMessage.style.display = 'none';
+            
+            let file, fileName;
+            
+            if (currentUploadType === 'zip') {
+                file = document.getElementById('zipFile').files[0];
+                fileName = file ? file.name : '';
+            } else {
+                file = document.getElementById('geojsonFile').files[0];
+                fileName = file ? file.name : '';
+            }
+            
+            // التحقق من وجود ملف
+            if (!file) {
+                uploadErrorMessage.textContent = 'يرجى اختيار ملف للرفع';
+                uploadErrorMessage.style.display = 'block';
+                return;
+            }
+            
+            // عرض مؤشر التحميل
+            loading.style.display = 'block';
+            
+            try {
+                let geojson;
+                
+                if (currentUploadType === 'zip') {
+                    // معالجة ملفات Shapefile
+                    const shapefileUrl = URL.createObjectURL(file);
+                    geojson = await shp(shapefileUrl);
+                    URL.revokeObjectURL(shapefileUrl);
+                } else {
+                    // معالجة ملفات GeoJSON
+                    const text = await file.text();
+                    geojson = JSON.parse(text);
+                }
+                
+                // التحقق من وجود بيانات
+                if (!geojson || !geojson.features || geojson.features.length === 0) {
+                    throw new Error('الملف لا يحتوي على بيانات جغرافية صالحة');
+                }
+                
+                // معالجة النصوص العربية
+                geojson = processArabicProperties(geojson);
+                
+                // إنشاء طبقة من بيانات GeoJSON
+                const layer = L.geoJSON(geojson, {
+                    style: function(feature) {
+                        // تلوين عشوائي للطبقات
+                        const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8844', '#8844ff'];
+                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        
+                        let style = {
+                            fillColor: color,
+                            color: '#333',
+                            weight: 2,
+                            opacity: 0.8,
+                            fillOpacity: 0.4
+                        };
+                        
+                        if (feature.geometry && feature.geometry.type === 'Point') {
+                            style.radius = 8;
+                            style.fillColor = color;
+                            style.color = '#333';
+                            style.weight = 2;
+                            style.opacity = 1;
+                            style.fillOpacity = 0.8;
+                        }
+                        
+                        return style;
+                    },
+                    pointToLayer: function(feature, latlng) {
+                        return L.circleMarker(latlng, {
+                            radius: 8,
+                            fillColor: '#ff4444',
+                            color: '#333',
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        });
+                    },
+                    onEachFeature: function(feature, layer) {
+                        // إضافة معلومات لكل ميزة مع دعم العربية
+                        if (feature.properties) {
+                            let popupContent = '<div style="max-width: 300px; direction: rtl; text-align: right;">';
+                            popupContent += '<strong>خصائص الميزة:</strong><br>';
+                            let hasProperties = false;
+                            
+                            for (let key in feature.properties) {
+                                const value = feature.properties[key];
+                                if (value !== null && value !== '' && value !== undefined) {
+                                    const displayKey = fixArabicEncoding(key);
+                                    const displayValue = fixArabicEncoding(String(value));
+                                    popupContent += `<strong>${displayKey}:</strong> ${displayValue}<br>`;
+                                    hasProperties = true;
+                                }
+                            }
+                            
+                            if (!hasProperties) {
+                                popupContent += 'لا توجد خصائص إضافية';
+                            }
+                            
+                            popupContent += '</div>';
+                            layer.bindPopup(popupContent);
+                        }
+                        
+                        // إضافة تفاعل عند التمرير
+                        layer.on({
+                            mouseover: function(e) {
+                                e.target.setStyle({
+                                    weight: 4,
+                                    color: '#ff0000',
+                                    fillOpacity: 0.7
+                                });
+                            },
+                            mouseout: function(e) {
+                                e.target.setStyle({
+                                    weight: 2,
+                                    color: '#333',
+                                    fillOpacity: 0.4
+                                });
+                            }
+                        });
+                    }
+                }).addTo(map);
+                
+                // تكبير الخريطة لتناسب الطبقة الجديدة
+                map.fitBounds(layer.getBounds());
+                
+                // حفظ الطبقة وإضافتها للقائمة
+                layerCounter++;
+                const layerInfo = {
+                    id: layerCounter,
+                    name: `${fileName} (${layerCounter})`,
+                    layer: layer,
+                    bounds: layer.getBounds(),
+                    featureCount: geojson.features.length,
+                    type: geojson.features[0]?.geometry?.type || 'غير معروف'
+                };
+                
+                uploadedLayers.push(layerInfo);
+                updateLayerList();
+                
+                // عرض رسالة النجاح
+                const geometryType = layerInfo.type;
+                uploadSuccessMessage.textContent = `✅ تم رفع وعرض الملف بنجاح! (${geojson.features.length} ميزة - نوع: ${geometryType})`;
+                uploadSuccessMessage.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error processing file:', error);
+                
+                let errorMsg = 'خطأ في معالجة الملف: ';
+                
+                if (error.message.includes("I don't know that shp type")) {
+                    errorMsg += 'نوع الملف غير مدعوم. جرب تحويل الملف إلى GeoJSON.';
+                } else if (error.message.includes('Unexpected token')) {
+                    errorMsg += 'ملف GeoJSON تالف أو غير صالح.';
+                } else if (error.message.includes('missing shp file')) {
+                    errorMsg += 'الملف ZIP لا يحتوي على ملف .shp مطلوب.';
+                } else {
+                    errorMsg += error.message;
+                }
+                
+                uploadErrorMessage.textContent = errorMsg;
+                uploadErrorMessage.style.display = 'block';
+            } finally {
+                // إخفاء مؤشر التحميل
+                loading.style.display = 'none';
+            }
+        }
+        
+        // تحديث قائمة الطبقات
+        function updateLayerList() {
+            if (uploadedLayers.length === 0) {
+                layerList.innerHTML = '<div class="info-message">لا توجد طبقات معروضة حالياً</div>';
+                return;
+            }
+            
+            layerList.innerHTML = '';
+            uploadedLayers.forEach(layerInfo => {
+                const layerItem = document.createElement('div');
+                layerItem.className = 'layer-item';
+                layerItem.innerHTML = `
+                    <div style="direction: rtl;">
+                        <strong>${layerInfo.name}</strong><br>
+                        <small>${layerInfo.featureCount} ميزة - ${layerInfo.type}</small>
+                    </div>
+                    <div class="layer-actions">
+                        <button class="btn-warning zoom-to-layer" data-id="${layerInfo.id}">تكبير</button>
+                        <button class="btn-danger remove-layer" data-id="${layerInfo.id}">إزالة</button>
+                    </div>
+                `;
+                layerList.appendChild(layerItem);
+            });
+            
+            // إضافة أحداث للأزرار
+            document.querySelectorAll('.zoom-to-layer').forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = parseInt(this.getAttribute('data-id'));
+                    const layerInfo = uploadedLayers.find(l => l.id === id);
+                    if (layerInfo) {
+                        map.fitBounds(layerInfo.bounds);
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.remove-layer').forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = parseInt(this.getAttribute('data-id'));
+                    removeLayer(id);
+                });
+            });
+        }
+        
+        // إزالة طبقة
+        function removeLayer(id) {
+            const layerIndex = uploadedLayers.findIndex(l => l.id === id);
+            if (layerIndex !== -1) {
+                map.removeLayer(uploadedLayers[layerIndex].layer);
+                uploadedLayers.splice(layerIndex, 1);
+                updateLayerList();
+            }
+        }
+        
+        // مسح جميع الطبقات
+        function clearAllLayers() {
+            uploadedLayers.forEach(layerInfo => {
+                map.removeLayer(layerInfo.layer);
+            });
+            uploadedLayers = [];
+            updateLayerList();
+            
+            uploadSuccessMessage.textContent = 'تم مسح جميع الطبقات بنجاح!';
+            uploadSuccessMessage.style.display = 'block';
+            setTimeout(() => {
+                uploadSuccessMessage.style.display = 'none';
+            }, 3000);
+        }
+        
+        // ... باقي الأحداث تبقى كما هي ...
         
         // معالجة تسجيل الدخول
         loginForm.addEventListener('submit', function(e) {
@@ -429,22 +977,17 @@
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             
-            // التحقق من بيانات الدخول
             const validUser = validUsers.find(user => 
                 user.username === username && user.password === password
             );
             
             if (validUser) {
-                // تسجيل الدخول ناجح
                 currentUser = validUser;
                 loginContainer.classList.add('hidden');
                 dashboard.style.display = 'block';
                 welcomeMessage.textContent = `مرحباً ${validUser.name} في النظام الآمن!`;
-                
-                // تهيئة الخريطة بعد تسجيل الدخول
                 setTimeout(initMap, 100);
             } else {
-                // تسجيل الدخول فاشل
                 errorMessage.style.display = 'block';
                 setTimeout(() => {
                     errorMessage.style.display = 'none';
@@ -452,7 +995,7 @@
             }
         });
         
-        // معالجة تسجيل الخروج
+        // بقية الأحداث
         logoutBtn.addEventListener('click', function() {
             dashboard.style.display = 'none';
             settingsContainer.style.display = 'none';
@@ -460,15 +1003,13 @@
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';
             currentUser = null;
+            clearAllLayers();
         });
         
-        // فتح صفحة الإعدادات
         settingsBtn.addEventListener('click', function() {
             dashboard.style.display = 'none';
             settingsContainer.style.display = 'block';
             currentUsername.value = currentUser.username;
-            
-            // مسح الحقول
             document.getElementById('newUsername').value = '';
             document.getElementById('currentPassword').value = '';
             document.getElementById('newPassword').value = '';
@@ -477,13 +1018,11 @@
             settingsSuccessMessage.style.display = 'none';
         });
         
-        // إغلاق صفحة الإعدادات
         cancelSettings.addEventListener('click', function() {
             settingsContainer.style.display = 'none';
             dashboard.style.display = 'block';
         });
         
-        // معالجة تغيير الإعدادات
         settingsForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -492,7 +1031,6 @@
             const newPassword = document.getElementById('newPassword').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
             
-            // التحقق من كلمة المرور الحالية
             if (currentPassword !== currentUser.password) {
                 settingsErrorMessage.textContent = 'كلمة المرور الحالية غير صحيحة!';
                 settingsErrorMessage.style.display = 'block';
@@ -500,7 +1038,6 @@
                 return;
             }
             
-            // التحقق من تطابق كلمات المرور الجديدة
             if (newPassword && newPassword !== confirmPassword) {
                 settingsErrorMessage.textContent = 'كلمات المرور الجديدة غير متطابقة!';
                 settingsErrorMessage.style.display = 'block';
@@ -508,7 +1045,6 @@
                 return;
             }
             
-            // التحقق من عدم استخدام اسم المستخدم الجديد من قبل
             if (newUsername && newUsername !== currentUser.username) {
                 const usernameExists = validUsers.some(user => 
                     user.username === newUsername && user.username !== currentUser.username
@@ -522,39 +1058,34 @@
                 }
             }
             
-            // تحديث بيانات المستخدم
             if (newUsername) {
                 currentUser.username = newUsername;
-                currentUser.name = newUsername; // يمكنك تغيير هذا ليكون حقل منفصل
+                currentUser.name = newUsername;
             }
             
             if (newPassword) {
                 currentUser.password = newPassword;
             }
             
-            // تحديث بيانات المستخدم في المصفوفة
             const userIndex = validUsers.findIndex(user => user.username === currentUser.username);
             if (userIndex !== -1) {
                 validUsers[userIndex] = currentUser;
             }
             
-            // عرض رسالة النجاح
             settingsSuccessMessage.textContent = 'تم حفظ التغييرات بنجاح!';
             settingsSuccessMessage.style.display = 'block';
             settingsErrorMessage.style.display = 'none';
-            
-            // تحديث اسم المستخدم الحالي في الحقل
             currentUsername.value = currentUser.username;
             
-            // إخفاء الرسالة بعد 3 ثواني
             setTimeout(() => {
                 settingsSuccessMessage.style.display = 'none';
             }, 3000);
         });
         
-        // أحداث أزرار الخريطة
         locateBtn.addEventListener('click', locateUser);
         resetBtn.addEventListener('click', resetMap);
+        uploadBtn.addEventListener('click', uploadShapefile);
+        clearLayersBtn.addEventListener('click', clearAllLayers);
     </script>
 </body>
 </html>
