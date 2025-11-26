@@ -128,6 +128,14 @@
             background-color: #e67e22;
         }
         
+        .btn-info {
+            background-color: #3498db;
+        }
+        
+        .btn-info:hover {
+            background-color: #2980b9;
+        }
+        
         .error-message {
             color: #e74c3c;
             text-align: center;
@@ -299,12 +307,61 @@
             flex: 1;
         }
         
-        #map {
-            height: 500px;
-            width: 100%;
+        /* عناصر تحكم الخريطة */
+        .map-container {
+            position: relative;
             border-radius: 10px;
             overflow: hidden;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+        
+        .map-controls-panel {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+        
+        .map-controls-panel h4 {
+            color: #2a5298;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .basemap-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .basemap-btn {
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        
+        .basemap-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+        
+        .basemap-btn:hover {
+            background: #2980b9;
+            color: white;
+            border-color: #2980b9;
         }
         
         .map-controls {
@@ -414,6 +471,10 @@
             .upload-buttons {
                 flex-direction: column;
             }
+            
+            .basemap-controls {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
         
         @media (max-width: 480px) {
@@ -423,6 +484,10 @@
             
             #map {
                 height: 300px;
+            }
+            
+            .basemap-controls {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -470,7 +535,6 @@
                         <ul>
                             <li><strong>Shapefile:</strong> ملف ZIP يحتوي على .shp, .shx, .dbf, .prj</li>
                             <li><strong>GeoJSON:</strong> الملفات النصية بصيغة .geojson أو .json</li>
-                            <li><strong>KML/KMZ:</strong> ملفات Google Earth</li>
                             <li><strong>يدعم الترميز العربي الكامل</strong> ✅</li>
                         </ul>
                     </div>
@@ -512,13 +576,41 @@
                     <div class="success-message" id="uploadSuccessMessage"></div>
                 </div>
                 
+                <!-- لوحة تحكم الخرائط الأساسية -->
+                <div class="map-controls-panel">
+                    <h4>🛠️ تحكم في الخرائط الأساسية</h4>
+                    <div class="basemap-controls">
+                        <div class="basemap-btn active" data-basemap="osm">
+                            🗺️ OpenStreetMap
+                        </div>
+                        <div class="basemap-btn" data-basemap="satellite">
+                            🛰️ Satellite
+                        </div>
+                        <div class="basemap-btn" data-basemap="terrain">
+                            ⛰️ Terrain
+                        </div>
+                        <div class="basemap-btn" data-basemap="dark">
+                            🌙 Dark Mode
+                        </div>
+                        <div class="basemap-btn" data-basemap="cycle">
+                            🚴 Cycle Map
+                        </div>
+                        <div class="basemap-btn" data-basemap="transport">
+                            🚗 Transport
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- الخريطة -->
-                <div id="map"></div>
+                <div class="map-container">
+                    <div id="map"></div>
+                </div>
                 
                 <!-- عناصر تحكم الخريطة -->
                 <div class="map-controls">
-                    <button id="locateBtn">تحديد موقعي</button>
-                    <button id="resetBtn">إعادة تعيين الخريطة</button>
+                    <button id="locateBtn">📍 تحديد موقعي</button>
+                    <button id="resetBtn">🔄 إعادة تعيين</button>
+                    <button id="fullscreenBtn">📺 ملء الشاشة</button>
                 </div>
                 
                 <!-- التحكم في الطبقات -->
@@ -598,6 +690,7 @@
         const welcomeMessage = document.getElementById('welcomeMessage');
         const locateBtn = document.getElementById('locateBtn');
         const resetBtn = document.getElementById('resetBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
         const currentUsername = document.getElementById('currentUsername');
         const uploadBtn = document.getElementById('uploadBtn');
         const clearLayersBtn = document.getElementById('clearLayersBtn');
@@ -608,6 +701,7 @@
         const zipUpload = document.getElementById('zipUpload');
         const geojsonUpload = document.getElementById('geojsonUpload');
         const uploadOptions = document.querySelectorAll('.upload-option');
+        const basemapBtns = document.querySelectorAll('.basemap-btn');
         
         // متغيرات الخريطة
         let map;
@@ -615,6 +709,42 @@
         let uploadedLayers = [];
         let layerCounter = 0;
         let currentUploadType = 'zip';
+        let currentBasemap = 'osm';
+        let basemapLayers = {};
+
+        // تعريف جميع الخرائط الأساسية
+        const basemapDefinitions = {
+            'osm': {
+                name: 'OpenStreetMap',
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            },
+            'satellite': {
+                name: 'Satellite',
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
+            },
+            'terrain': {
+                name: 'Terrain',
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+                attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
+            },
+            'dark': {
+                name: 'Dark Mode',
+                url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            },
+            'cycle': {
+                name: 'Cycle Map',
+                url: 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            },
+            'transport': {
+                name: 'Transport',
+                url: 'https://{s}.tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=your-api-key',
+                attribution: '&copy; <a href="https://www.thunderforest.com/">Thunderforest</a>'
+            }
+        };
         
         // تبديل نوع الرفع
         uploadOptions.forEach(option => {
@@ -633,20 +763,58 @@
             });
         });
         
+        // تبديل الخرائط الأساسية
+        basemapBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                basemapBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                const basemapType = this.getAttribute('data-basemap');
+                switchBasemap(basemapType);
+            });
+        });
+        
+        // تبديل الخريطة الأساسية
+        function switchBasemap(basemapType) {
+            if (basemapLayers[currentBasemap]) {
+                map.removeLayer(basemapLayers[currentBasemap]);
+            }
+            
+            if (!basemapLayers[basemapType]) {
+                const basemapDef = basemapDefinitions[basemapType];
+                basemapLayers[basemapType] = L.tileLayer(basemapDef.url, {
+                    attribution: basemapDef.attribution,
+                    maxZoom: 19
+                });
+            }
+            
+            basemapLayers[basemapType].addTo(map);
+            currentBasemap = basemapType;
+        }
+        
         // تهيئة الخريطة
         function initMap() {
             // إنشاء الخريطة مع عرض خريطة العالم
             map = L.map('map').setView([24.0, 45.0], 5); // مركز على السعودية
             
-            // إضافة طبقة الخريطة من OpenStreetMap
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }).addTo(map);
+            // تهيئة جميع الطبقات الأساسية
+            Object.keys(basemapDefinitions).forEach(key => {
+                const basemapDef = basemapDefinitions[key];
+                basemapLayers[key] = L.tileLayer(basemapDef.url, {
+                    attribution: basemapDef.attribution,
+                    maxZoom: 19
+                });
+            });
+            
+            // إضافة الخريطة الأساسية الافتراضية
+            basemapLayers['osm'].addTo(map);
             
             // إضافة علامة الموقع الافتراضي
             userMarker = L.marker([24.0, 45.0]).addTo(map)
                 .bindPopup('موقع البداية - المملكة العربية السعودية')
                 .openPopup();
+                
+            // إضافة تحكم في الطبقات
+            L.control.layers(basemapLayers).addTo(map);
         }
         
         // تحديد موقع المستخدم
@@ -682,15 +850,26 @@
                 .openPopup();
         }
         
+        // وضع ملء الشاشة
+        function toggleFullscreen() {
+            const mapContainer = document.querySelector('.map-container');
+            if (!document.fullscreenElement) {
+                if (mapContainer.requestFullscreen) {
+                    mapContainer.requestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+        
         // معالجة النصوص العربية
         function fixArabicEncoding(text) {
             if (typeof text !== 'string') return text;
             
-            // محاولة إصلاح الترميز العربي
             try {
-                // إذا كان النص يحتوي على أحرف عربية مشفرة بشكل خاطئ
                 if (text.includes('Ã') || text.includes('Ã')) {
-                    // محاولة تحويل من Windows-1256 إلى UTF-8
                     return decodeURIComponent(escape(text));
                 }
                 return text;
@@ -709,11 +888,8 @@
                     for (let key in feature.properties) {
                         let value = feature.properties[key];
                         
-                        // معالجة النصوص العربية
                         if (typeof value === 'string') {
                             value = fixArabicEncoding(value);
-                            
-                            // تنظيف النص من الأحpecial الغير مرغوبة
                             value = value.replace(/[^\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\w\s\-_\.]/g, '');
                         }
                         
@@ -728,7 +904,6 @@
         
         // رفع وعرض ملفات Shapefile
         async function uploadShapefile() {
-            // إخفاء رسائل الخطأ والنجاح السابقة
             uploadErrorMessage.style.display = 'none';
             uploadSuccessMessage.style.display = 'none';
             
@@ -742,42 +917,35 @@
                 fileName = file ? file.name : '';
             }
             
-            // التحقق من وجود ملف
             if (!file) {
                 uploadErrorMessage.textContent = 'يرجى اختيار ملف للرفع';
                 uploadErrorMessage.style.display = 'block';
                 return;
             }
             
-            // عرض مؤشر التحميل
             loading.style.display = 'block';
             
             try {
                 let geojson;
                 
                 if (currentUploadType === 'zip') {
-                    // معالجة ملفات Shapefile
                     const shapefileUrl = URL.createObjectURL(file);
                     geojson = await shp(shapefileUrl);
                     URL.revokeObjectURL(shapefileUrl);
                 } else {
-                    // معالجة ملفات GeoJSON
                     const text = await file.text();
                     geojson = JSON.parse(text);
                 }
                 
-                // التحقق من وجود بيانات
                 if (!geojson || !geojson.features || geojson.features.length === 0) {
                     throw new Error('الملف لا يحتوي على بيانات جغرافية صالحة');
                 }
                 
-                // معالجة النصوص العربية
                 geojson = processArabicProperties(geojson);
                 
                 // إنشاء طبقة من بيانات GeoJSON
                 const layer = L.geoJSON(geojson, {
                     style: function(feature) {
-                        // تلوين عشوائي للطبقات
                         const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8844', '#8844ff'];
                         const color = colors[Math.floor(Math.random() * colors.length)];
                         
@@ -811,7 +979,6 @@
                         });
                     },
                     onEachFeature: function(feature, layer) {
-                        // إضافة معلومات لكل ميزة مع دعم العربية
                         if (feature.properties) {
                             let popupContent = '<div style="max-width: 300px; direction: rtl; text-align: right;">';
                             popupContent += '<strong>خصائص الميزة:</strong><br>';
@@ -835,7 +1002,6 @@
                             layer.bindPopup(popupContent);
                         }
                         
-                        // إضافة تفاعل عند التمرير
                         layer.on({
                             mouseover: function(e) {
                                 e.target.setStyle({
@@ -855,10 +1021,8 @@
                     }
                 }).addTo(map);
                 
-                // تكبير الخريطة لتناسب الطبقة الجديدة
                 map.fitBounds(layer.getBounds());
                 
-                // حفظ الطبقة وإضافتها للقائمة
                 layerCounter++;
                 const layerInfo = {
                     id: layerCounter,
@@ -872,7 +1036,6 @@
                 uploadedLayers.push(layerInfo);
                 updateLayerList();
                 
-                // عرض رسالة النجاح
                 const geometryType = layerInfo.type;
                 uploadSuccessMessage.textContent = `✅ تم رفع وعرض الملف بنجاح! (${geojson.features.length} ميزة - نوع: ${geometryType})`;
                 uploadSuccessMessage.style.display = 'block';
@@ -895,7 +1058,6 @@
                 uploadErrorMessage.textContent = errorMsg;
                 uploadErrorMessage.style.display = 'block';
             } finally {
-                // إخفاء مؤشر التحميل
                 loading.style.display = 'none';
             }
         }
@@ -924,7 +1086,6 @@
                 layerList.appendChild(layerItem);
             });
             
-            // إضافة أحداث للأزرار
             document.querySelectorAll('.zoom-to-layer').forEach(button => {
                 button.addEventListener('click', function() {
                     const id = parseInt(this.getAttribute('data-id'));
@@ -1084,6 +1245,7 @@
         
         locateBtn.addEventListener('click', locateUser);
         resetBtn.addEventListener('click', resetMap);
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
         uploadBtn.addEventListener('click', uploadShapefile);
         clearLayersBtn.addEventListener('click', clearAllLayers);
     </script>
